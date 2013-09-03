@@ -40,7 +40,7 @@ end
 ############## Global configuration
 config = MyConfig.new { |c|
     # Directory containing all streams recorded by MythTV backend:
-    c.mythtv_storage_path = "/var/video"
+    c.mythtv_storage_path = "/var/lib/mythtv/recordings"
     # File extension of all stream files in storage:
     c.stream_ext = ".mpg"
 }
@@ -51,7 +51,7 @@ destinations = [
 	# Set to false to disable this destination:
 	d.enabled = true
 	# Destination directory to create the links in:
-	d.dest_path = "/var/video/tv"
+	d.dest_path = "/var/lib/mythtv/recordings/tv"
 	# Format string to use to create the link filename. This is an ERB template:
 	d.link_format = "<%=recgroup%>/"+
 	    "<%=title.tr('^A-Za-z0-9 .-', '_')%>/" +
@@ -182,8 +182,9 @@ class MythTvProtocol
     
     def delete_recording(chanid, starttime)
 	puts "Delete recording #{chanid} #{starttime}" if $verbose
-	send("DELETE_RECORDING #{chanid} #{starttime}")
+	send("DELETE_RECORDING #{chanid} #{starttime} FORCE")
 	resp = receive()
+	puts "<<< #{resp.inspect}"
 	raise resp.inspect if resp != ["-1"]
     end
 end
@@ -351,7 +352,7 @@ def mythtv_link(config, dest)
 	    "#{config.mythtv_storage_path}/" +
 	    "#{rec.chanid}_#{rec.starttime_str}#{config.stream_ext}"
 	if !File.exists?(source_stream_fname)
-#	    puts "Could not find #{source_stream_fname} (#{rec.title}); skipping..."
+	    puts "Could not find #{source_stream_fname} (#{rec.title}); skipping..."
 	    next
 	end
 
