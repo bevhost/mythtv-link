@@ -96,13 +96,14 @@ require 'fileutils'
 require 'time'
 require 'net/http'
 require 'rubygems'
-require 'hpricot'
+require 'rexml/document'
+require 'rexml/xpath'
 require 'optparse'
 require 'cgi'
 
 # A recorded program in a file
 class Recording
-    attr_accessor :chanid, :starttime_str, :endtime_str
+    attr_accessor :chanid, :starttime_str, :endtime_str, :filename
     attr_accessor :title, :subtitle, :recgroup, :season, :episode
 
     # Start- and endtime as Time object:
@@ -143,6 +144,9 @@ class MythTvProtocol
 	tokens.merge!(
 #		"63" => "3875641D",
 #		"64" => "8675309J",	# we don't support these anymore.
+		"72" => "D78EFD6F",
+		"73" => "D7FE8D6F",
+		"74" => "SingingPotato",
 		"75" => "SweetRock"
 	)
 	token = tokens[@version]
@@ -215,7 +219,8 @@ def mythxml(url)
     mythxmlurl = "http://localhost:6544/Dvr/"
     resp = Net::HTTP.get_response(URI.parse("#{mythxmlurl}/#{url}"))
     raise "Retrieving #{url}: #{resp.code}" if resp.code != "200"
-    xml = Hpricot::XML(resp.body)
+    #xml = Hpricot::XML(resp.body)
+    xml = REXML::Document.new(resp.body)
     return xml
 end
 
@@ -223,29 +228,40 @@ end
 def get_recordings()
     puts "Retrieving list of current recordings..." if $verbose
     xml = mythxml("GetRecordedList")
-    recordings = (xml / "ProgramList/Programs/Program").map { |program|
+
+    recordings = []
+    xml.elements.each("ProgramList/Programs/Program") do  |program| 
+
 	rec = Recording.new
-	channel = (program / "Channel").first || raise
-	recording = (program / "Recording").first || raise
-	rec.title = CGI.unescapeHTML((program/:Title).innerHTML) || raise
-	rec.season = (program/:Season).innerHTML || raise
-	rec.episode = (program/:Episode).innerHTML || raise 
+	channel = program.elements["Channel"] || raise
+	recording = program.elements["Recording"] || raise
+	rec.title = CGI.unescapeHTML(program.elements["Title"].text) || raise
+	rec.season = program.elements["Season"].text || raise
+	rec.episode = program.elements["Episode"].text || raise 
+	rec.filename = program.elements["FileName"].text || raise
 	puts("found #{rec.season}x#{rec.episode} #{rec.title}") if $verbose
-	starttime = (recording/:StartTs).innerHTML || raise
-	endtime = (recording/:EndTs).innerHTML || raise
-	rec.chanid = (channel/:ChanId).innerHTML || raise
-	rec.subtitle = CGI.unescapeHTML((program/:SubTitle).innerHTML) || raise
-	rec.recgroup = (recording/:RecGroup).innerHTML || raise
+	starttime = recording.elements["StartTs"].text || raise
+	endtime = recording.elements["EndTs"].text || raise
+	rec.chanid = channel.elements["ChanId"].text || raise
+	rec.subtitle = program.elements["SubTitle"].text 
+	if rec.subtitle
+	    rec.subtitle = CGI.unescapeHTML(rec.subtitle) 
+	else
+	    rec.subtitle = ""
+	end	
+	rec.recgroup = recording.elements["RecGroup"].text || raise
   
+
 	rec.starttime_str = starttime.delete("^0-9")
 	rec.endtime_str = endtime.delete("^0-9")
 
+	puts("from #{rec.starttime_str} to #{rec.endtime_str} on #{rec.chanid}") if $verbose
 	if pos = rec.title.index(" (Includes") 
 		rec.title = rec.title[0,pos] 
 	end
 
-	rec
-    }
+	recordings << rec
+    end
     return recordings
 end
 
@@ -323,6 +339,8 @@ def mythtv_link(config, dest)
 	old_link = links[key]
 	old_link.is_in_db = true if old_link
 
+	puts rec.title
+	puts dest.link_format
 	# Determine new filename from recording aspects
 	new_fname = rec.format_link_name(dest.link_format)
 	new_fname = "#{dest.dest_path}/#{new_fname}#{config.stream_ext}"
@@ -348,9 +366,8 @@ def mythtv_link(config, dest)
 	    next
 	end
 	
-	source_stream_fname = 
-	    "#{config.mythtv_storage_path}/" +
-	    "#{rec.chanid}_#{rec.starttime_str}#{config.stream_ext}"
+	puts "FileName (#{rec.filename});" if $verbose
+	source_stream_fname = "#{config.mythtv_storage_path}/#{rec.filename}"
 	if !File.exists?(source_stream_fname)
 	    puts "Could not find #{source_stream_fname} (#{rec.title}); skipping..."
 	    next
