@@ -1,0 +1,141 @@
+A.C. Ryan PlayOn! HD Mini as a MythTV frontend player
+
+I've been a happy user of a modded XBox 1 (not 360) using XBMC as the player for over a year, 
+but the problem is with old second hand hardware that you're on your own if it gets broken. 
+No warranty, difficult to get replacement parts for etc. And it was not up-to-spec on its 
+output either: only default TV out, no HDMI. And the audio part was also horrible with my 
+analog amplifier: the sound was distorted and I don't know why.
+
+We have a real family use of the player: playing back recorded children shows like Sesame Street
+ and so on recorded by MythTV containing two USB analog tuners. It worked quite well, but the 
+problem is that the remaining part of the household gets attached to the new setup quite easily. 
+No more hacking late which leaves the system in an unusable state. No more tinkering during the 
+evening when the player is in active use. So when the XBox broke down, I saw this as a good 
+reason to 'upgrade' the system.
+
+Naively I assumed an upgrade would mean progression: no more of the previous problems, and a 
+shiny new toy to test. However, I totally forgot the joy-of-use of a hand configured system 
+(with its quirks) and a common-of-the-shelf system like the new streamer would be. 
+More on that later.
+
+Another limit was placed by the fact that we needed the system working now and not next week. 
+This limits the time which you can spend aimlessly wandering on the internet. Only one evening 
+to find the 'best' system. You could take two approaches here: go for the cheapest system 
+which about fulfills you (identified) requirements, or go for an expensive system (say,. from
+ Apple) which probably will be nice since you paid too much for it. I opted for the first one,
+ knowing that it would probably have irritating quirks which would allow me to know more 
+requirements for the replacement of that one.
+
+My list of requirements were (because I wanted to use it as MythTV frontend):
+  - Could play from a wired network. Wireless just gives too much trouble for long lived 
+    TCP/IP connections like 2 hours of movie.
+  - Could play not only HTTP streams but also from some kind of network filesystem like 
+    SMB, NFS or UPnP.
+  - Could also delete files from the network filesystem (to remove a recording after it 
+    has been watched).
+  - Could play MPEG2 since that's what my PVRUSB tuner recorded into. But other formats 
+    like DivX and MPEG4 are of course also nice to have.
+  - Could handle DVDs in some way since we have some children's DVDs to be played. 
+    The player does not have to be physical: it can also be the 'copy DVD once to harddisk' 
+    kind of playing, since a children's DVD has the advantage that you're going to watch 
+    it numerous number of times, and the DVD count is relatively low (3 DVDs should be 
+    enough for everyone).
+  - Have analog PAL TV-out. Preferably in component format.
+  - Have HDMI for the future. I still have a 10 year old CRT, but I still need this option. 
+    I forgot why. But it was an important requirements nevertheless.
+  - Have a good analog audio out
+  - Did I mention cheap?
+  - Nice to haves: small form factor, low power usage, quick to boot, possibility to connect 
+    USB mass storage devices.
+
+The cheapest one which seemed to do most of it was the EVA2000 for about 50 euros, but I had 
+some doubt on whether the audio and video outputs would be good enough given the 3.5mm jack 
+connections for that. Since I heard positive signals about the A.C. Ryan PlayOn! HD because 
+of its supposedly large number of firmware updates giving new features all the time and because
+of the audio and video connections being cinch connections.
+
+So I bought one the same day for 90 euros. Attached it to my TV and network, and started using it.
+The first evening it felt horrible. It became very clear what I was missing since I assumed those 
+things would be good for a product of 90 euros. Let me just name some of the annoyances:
+  - it takes 20 seconds(!) between pressing the key on the remote control and the start of the 
+    first frame of a movie when starting a movie from a Windows share. That's just too long.
+  - the UI is horrible. It is not suitable for more than about 10 entries in a directory since 
+    it shows about 7 items at a time on the screen. The remainder of the screen is filled with 
+    large rows of icons and a preview window which cannot be disabled.
+  - (DVR specific) If you record from the TV channels, it is difficult to start at the right 
+    time the recording since the program guides are only a 'guide' to the starting times of a program. 
+    So you record too much to be on the safe side. Which means that you need to seek to lot to get at 
+    the start of the interesting part in the recorded program. The A.C. Ryan POHD has 3 options to 
+    seek: 10 seconds back, 30 seconds forward, and a special 'select minute to go to' in a separate menu.
+    Which means that advancing quickly 10 minutes into the recording is difficult, which I need to do 
+    for about each recording.
+  - after selecting a file or program to play, you must press the 'enter' key on the remote control. 
+    Not the 'play' key, and also not the 'return' key (which is a kind of escape key). 
+    During playing and then pausing, you can resume with the 'play' key (not the 'return' kind). 
+    Also, the 'play' key is the smallest(!) key.
+  - It cannot set the location to start. So to watch a recording, we have to select 'browse', 
+    then filesystem type (NFS for example), then the server. We would like to make this location 
+    the default location!
+  - deleting a recording takes 10 presses on the remote control, including typing in a 'passcode'(?) 
+    which needs to be '0000' as it seems. This is too much for a common (DVR) operation.
+  - although it runs Linux, it cannot be tailored at all. It is all closed source, 
+    no plugin mechanism of any kind and the number of configuration items is small.
+
+On the other side, there are definitely a lot of positive points:
+  - the audio and video or very good. 
+  - the system is completely silent (no fan at all)
+  - it is small, so it fits next to the TV instead of near the amplifier. 
+  - it only takes 10W during operation, and no measurable power during standby.
+  - adding a 1Tb WD Passport via USB to it makes a completely silent NAS, only adds 2W during operation. 
+    can speedup play to 1.5x and 2x while keeping the audio at the same frequency.
+  - can speedup play to 32x
+
+So I decided to keep it, and find out how to use it best as a MythTV frontend. 
+So here are my recommendations:
+
+Use NFS, not SMB 
+
+Export your MythTV streams directory on your Linux machine with NFS, not SMB/samba! 
+Starting a stream from NFS takes 8s instead of 20s. I assume this has to do with the 
+fact the CPU is slow and NFS is a built-in Linux filesystem, while SMB needs an external 
+program to be loaded. For this, add to your /etc/exports:
+
+   /srv/video_link 
+   192.168.1.0/24(rw,no_subtree_check,async,all_squash,anonuid=113,anongid=126)
+
+(all on one line; replace  /srv/video_link to your directory to export, 
+192.168.1 with your own private network, and 113 and 126 by the UID and GID of the mythtv user), 
+and (re)start your NFS server
+
+Use mythtv-link.rb instead of exporting MythTV storage directory directly
+
+The POHD does not implement the MythTV interface. And even if it would, it would be outdated 
+soon since MythTV does not have a stable API.As a poor mans implementation, one could NFS 
+export the storage directory from MythTV, but the problem is that that directory contains 
+files with names like 1020_20101017231500.mpg which means 'program with id 1020, starting at 
+2010-10-17 23:15:00'. That's not a user-friendly way of presenting all your recordings. 
+The third problem is that deleting a file in this directory will make the MythTV database 
+inconsistent with the filesystem.
+For this I implemented a script to:
+  - Create hardlinks to the recordings in a configurable but readable format, like 
+    /srv/video_link/Criminal intent/1017 2315 (85m).mpg . Which means one directory per program, 
+    and have the date, length and subtitle in the filename. This is configurable of course, so 
+    one could include the MythTV recording group used in the filename.
+  - Synchronize changes in the MythTV database to the filesystem. So deletions the the 
+    database (like auto expires) are removed from the filesystem also, and additions are created 
+    in the filesystem. Also empty directories are removed.
+  - Synchronize changes in the filesystem to the MythTV database. So deletions initiated from 
+    the A.C. Ryan POHD will also remove the recording from MythTV itself.
+
+Installation of the script:
+  - download from http://storedicom.dyndns.org/mythtv-link.rb
+  - install Ruby 1.8
+  - edit the script to configure to your taste
+  - run the script regularly to keep MythTV and your other filesystem synchronized by adding 
+    the next line to crontab with 
+
+crontab -u mythtv -e
+*/10 * * * * /usr/local/bin/mythtv-link.rb
+
+Happy viewing!
+
