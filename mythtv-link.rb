@@ -22,7 +22,7 @@
 #
 # R. Nijlunsing <rutger.nijlunsing@gmail.com>
 
-class Config
+class MyConfig
     attr_accessor :mythtv_storage_path, :stream_ext
     def initialize; yield self; end
 end
@@ -38,7 +38,7 @@ class DestinationConfig
 end
 
 ############## Global configuration
-config = Config.new { |c|
+config = MyConfig.new { |c|
     # Directory containing all streams recorded by MythTV backend:
     c.mythtv_storage_path = "/var/video"
     # File extension of all stream files in storage:
@@ -51,10 +51,11 @@ destinations = [
 	# Set to false to disable this destination:
 	d.enabled = true
 	# Destination directory to create the links in:
-	d.dest_path = "/var/video/tv/"
+	d.dest_path = "/var/video/tv"
 	# Format string to use to create the link filename. This is an ERB template:
 	d.link_format = "<%=recgroup%>/"+
 	    "<%=title.tr('^A-Za-z0-9 .-', '_')%>/" +
+	    "<%=season%>x<%=episode%> " +
 	    "<%=starttime.strftime('%m%d %H%M')%>" +
 	    "<%=' ' + subtitle.tr('^A-Za-z0-9 .-', '_') if !subtitle.empty?%>" +
 	    " (<%=duration%>m)"
@@ -86,7 +87,7 @@ destinations = [
 
 $verbose = true
 # If true, do not delete from MythTV:
-$pretend = true
+$pretend = false
 
 require 'erb'
 require 'find'
@@ -94,13 +95,15 @@ require 'socket'
 require 'fileutils'
 require 'time'
 require 'net/http'
+require 'rubygems'
 require 'hpricot'
 require 'optparse'
+require 'cgi'
 
 # A recorded program in a file
 class Recording
     attr_accessor :chanid, :starttime_str, :endtime_str
-    attr_accessor :title, :subtitle, :recgroup, :filename
+    attr_accessor :title, :subtitle, :recgroup, :season, :episode
 
     # Start- and endtime as Time object:
     def starttime; Time.parse(@starttime_str); end
@@ -110,7 +113,7 @@ class Recording
     def duration; ((endtime()- starttime()) / 60).to_i; end
 
     def format_link_name(link_format)
-	return ERB.new(link_format).result(binding)
+	return ERB.new(link_format).result(binding).sub("0x0 ","")
     end
 end
 
@@ -139,8 +142,8 @@ class MythTvProtocol
 	tokens = Hash.new("78B5631E")  # Used by 23056 and 62
 	tokens.merge!(
 #		"63" => "3875641D",
-#		"64" => "8675309J",  	 # we don't support these anymore.
-		"72" => "D78EFD6F"
+#		"64" => "8675309J",	# we don't support these anymore.
+		"75" => "SweetRock"
 	)
 	token = tokens[@version]
 	send("MYTH_PROTO_VERSION #{@version} #{token}")
@@ -219,22 +222,26 @@ end
 def get_recordings()
     puts "Retrieving list of current recordings..." if $verbose
     xml = mythxml("GetRecordedList")
-    recordings = (xml / "Programs/Program").map { |program|
+    recordings = (xml / "ProgramList/Programs/Program").map { |program|
 	rec = Recording.new
 	channel = (program / "Channel").first || raise
 	recording = (program / "Recording").first || raise
-	rec.chanid = (channel / "ChanId").first.innerHTML || raise
-	rec.filename = (program / "FileName").first.innerHTML || raise
-	starttime = (recording / "StartTs").first.innerHTML || raise
-	endtime = (recording / "EndTs").first.innerHTML || raise
-	rec.title = (program / "Title").first.innerHTML || raise
-	rec.subtitle = (program / "SubTitle").first.innerHTML || raise
-	rec.recgroup = (recording / "RecGroup").first.innerHTML || raise
+	rec.title = CGI.unescapeHTML((program/:Title).innerHTML) || raise
+	rec.season = (program/:Season).innerHTML || raise
+	rec.episode = (program/:Episode).innerHTML || raise 
+	puts("found #{rec.season}x#{rec.episode} #{rec.title}") if $verbose
+	starttime = (recording/:StartTs).innerHTML || raise
+	endtime = (recording/:EndTs).innerHTML || raise
+	rec.chanid = (channel/:ChanId).innerHTML || raise
+	rec.subtitle = CGI.unescapeHTML((program/:SubTitle).innerHTML) || raise
+	rec.recgroup = (recording/:RecGroup).innerHTML || raise
   
 	rec.starttime_str = starttime.delete("^0-9")
 	rec.endtime_str = endtime.delete("^0-9")
 
-	puts "Recording #{rec.title} on #{rec.chanid} in #{rec.recgroup} at #{rec.starttime_str}" if $verbose
+	if pos = rec.title.index(" (Includes") 
+		rec.title = rec.title[0,pos] 
+	end
 
 	rec
     }
@@ -256,7 +263,7 @@ def change_gid_and_uid(mythtv_storage_path, stream_ext)
     mythtv_gid = a_stream_stat.gid
     if mythtv_gid != Process::Sys.getgid() ||
 	    mythtv_uid != Process::Sys.getuid()
-	puts "Changing to uid=#{mythtv_uid} gid=#{mythtv_gid}" if $verbose
+	puts "Changing #{stream_glob} to uid=#{mythtv_uid} gid=#{mythtv_gid}" if $verbose
 	Process::Sys.setgid(mythtv_gid)
 	Process::Sys.setuid(mythtv_uid)
     end
@@ -274,6 +281,7 @@ def read_state(dest_path)
 	version, links = *Marshal.load(File.read(fname))
 	links = {} if version != state_version
     rescue Errno::ENOENT, ArgumentError
+	puts "Error reading state file"
 	links = {}
     end
     puts "Read state file: #{links.size} links" if $verbose
@@ -292,6 +300,7 @@ end
 def mythtv_link(config, dest)
     change_gid_and_uid(config.mythtv_storage_path, config.stream_ext)
 
+    puts "Read state file #{dest.dest_path}." if $verbose
     links = read_state(dest.dest_path)
 
     # Mark all links as 'not in database' till proven otherwise
@@ -316,7 +325,6 @@ def mythtv_link(config, dest)
 	# Determine new filename from recording aspects
 	new_fname = rec.format_link_name(dest.link_format)
 	new_fname = "#{dest.dest_path}/#{new_fname}#{config.stream_ext}"
-	puts "new: #{new_fname}" if $verbose
 	
 	# Create directory in which new file should reside:
 	FileUtils.mkdir_p(File.dirname(new_fname))
@@ -341,10 +349,9 @@ def mythtv_link(config, dest)
 	
 	source_stream_fname = 
 	    "#{config.mythtv_storage_path}/" +
-	#    "#{rec.chanid}_#{rec.starttime_str}#{config.stream_ext}"  #old version did this
-	    "#{rec.filename}"  	# new version has the filename in the xml
+	    "#{rec.chanid}_#{rec.starttime_str}#{config.stream_ext}"
 	if !File.exists?(source_stream_fname)
-	    puts "Could not find #{source_stream_fname} (#{rec.title}); skipping..."
+#	    puts "Could not find #{source_stream_fname} (#{rec.title}); skipping..."
 	    next
 	end
 
