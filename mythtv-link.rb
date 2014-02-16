@@ -85,7 +85,7 @@ destinations = [
 ]
 ############## End of configuration
 
-$verbose = true
+$verbose = false
 # If true, do not delete from MythTV:
 $pretend = false
 
@@ -147,7 +147,8 @@ class MythTvProtocol
 		"72" => "D78EFD6F",
 		"73" => "D7FE8D6F",
 		"74" => "SingingPotato",
-		"75" => "SweetRock"
+		"75" => "SweetRock",
+		"77" => "WindMark"
 	)
 	token = tokens[@version]
 	send("MYTH_PROTO_VERSION #{@version} #{token}")
@@ -260,7 +261,9 @@ def get_recordings()
 		rec.title = rec.title[0,pos] 
 	end
 
-	recordings << rec
+	if rec.recgroup != "Deleted"
+		recordings << rec
+	end
     end
     return recordings
 end
@@ -339,8 +342,8 @@ def mythtv_link(config, dest)
 	old_link = links[key]
 	old_link.is_in_db = true if old_link
 
-	puts rec.title
-	puts dest.link_format
+#	puts rec.title
+#	puts dest.link_format
 	# Determine new filename from recording aspects
 	new_fname = rec.format_link_name(dest.link_format)
 	new_fname = "#{dest.dest_path}/#{new_fname}#{config.stream_ext}"
